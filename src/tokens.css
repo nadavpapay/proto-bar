@@ -1,0 +1,17 @@
+/* ─── Builder chrome tokens ───────────────────────────────────────────────────
+ *
+ * The bar's palette. Neutral dark, and never themed by the product under it —
+ * the chrome sits outside the thing being reviewed so it can never be mistaken
+ * for part of it. Tailwind v4: `@theme` turns each into a `ui-*` utility
+ * (`bg-ui-surface`, `text-ui-dim`, `border-ui-line`).
+ *
+ * Import once, after `@import "tailwindcss";`.
+ */
+@theme {
+  --color-ui-bg: #0c0d0f;
+  --color-ui-surface: #17191d;
+  --color-ui-raised: #23262c;
+  --color-ui-line: #2c3037;
+  --color-ui-text: #e8eaed;
+  --color-ui-dim: #8b9099;
+}
