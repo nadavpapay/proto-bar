@@ -3,3 +3,10 @@ dist
 *.log
 .DS_Store
 .claude/settings.local.json
+
+# The demo's own scribbles. On a real job notes.json IS committed — it is the record;
+# only the crash-safety copies beside it are not.
+notes.json
+notes.json.bak
+notes.json.tmp
+notes-inbox.json

@@ -5,8 +5,11 @@ wear it: a dark, LTR bar over the stage with a screen picker, whatever pickers t
 needs, a review group on the right, and a hide button that collapses the whole thing to a
 draggable corner pill.
 
-Nothing in it knows what project it is in. There is no router, no notes system, no
-versions — those were EDLock's and stay there. What you get is the frame and the controls;
+Plus the review notes: pins dropped on the screen with a sentence each, saved to a file in
+the repo so the agent reads them on "look at the notes", collected off the public link when
+there is one.
+
+Nothing in it knows what project it is in. There is no router and no screen registry —
 what goes in the slots is yours.
 
 ```bash
@@ -15,8 +18,8 @@ cd ~/dev/proto-bar && npm run dev      # the demo, port 4710
 
 ## Using it in a project
 
-Copy `src/parts.tsx`, `src/CollapsedPill.tsx`, `src/index.ts` and `src/tokens.css` into
-the project. It needs **React 19** and **Tailwind v4** — the tokens file is an `@theme`
+Copy `src/` (minus `main.tsx`, `demo.css` and `Example.tsx`) into the project, and
+`vite-notes.ts` beside `vite.config.ts` if you want the notes. It needs **React 19** and **Tailwind v4** — the tokens file is an `@theme`
 block, imported once after `@import "tailwindcss";`:
 
 ```css
@@ -42,8 +45,52 @@ Then compose a bar. `src/Example.tsx` is a whole one; the shape is:
 ```
 
 When `collapsed`, render `<CollapsedPill title={…} onExpand={…} />` instead, and wire `\`
-with `useBarKeys({ "\\": () => setCollapsed(c => !c) })`. Make the stage under the bar
-`flex-1 min-h-0` so it gives up the bar's second row when the bar wraps.
+with `useBarKeys({ "\\": () => setCollapsed(c => !c) })`. Put the screen in a `Stage`
+(desktop fills the window, mobile is a real 390×844 frame) — or your own `flex-1 min-h-0
+relative` box, so it gives up the bar's second row when the bar wraps.
+
+### Notes
+
+Three parts, all in `src/notes/`, and one dev-server plugin:
+
+```ts
+// vite.config.ts
+import { notesFile } from "./vite-notes.ts";
+plugins: [react(), tailwindcss(), notesFile()]          // writes notes.json in the repo
+```
+
+```tsx
+const { notes, write, where } = useNotesStore();        // the whole file
+const here = notes.filter(n => n.screen === screen && n.viewport === viewport);
+const openHere = here.filter(n => !n.done);
+
+// in the bar's tail
+<NotesMenu notes={notes} here={openHere.length} hereAll={here.length}
+  on={notesOn} onToggle={…} showDone={…} onShowDone={…} where={where} onJump={…} />
+
+// over the stage
+<Stage viewport={viewport} overlay={notesOn && (
+  <NotesLayer notes={showDone ? here : openHere}
+    where={{ screen, viewport, context: { version, state } }}
+    onAdd={n => write([...notes, n])} onEdit={…} onToggle={…} onDelete={…} newId={newId} />
+)}>
+```
+
+Wire `n` in `useBarKeys` to toggle the layer. `Example.tsx` has all of it, including the
+jump back to where a note was written.
+
+A note records the screen and viewport it was dropped on and shows only there; whatever
+else you put in `context` (a version, a state) is written down for the jump and the list
+but never hides a pin. A dialog that carries `data-note-scope="name"` gets its own notes,
+measured against its own box and drawn only while it is open. Hold ⌥ to click through the
+layer to the screen. Done notes stay in the file, off the screen.
+
+**Where notes go.** On the dev server, `notes.json` in the repo — commit it, it is the
+record. On a deployed copy (`server.cjs`, a static server with a `/__notes` inbox that
+survives redeploys on a `/data` volume), notes wait in the inbox and the dev server
+collects them the next time it runs, given `notesFile({ inbox: "https://…/__notes" })`.
+With no endpoint at all they live in the browser and the panel says so, with Copy all as
+the way out.
 
 ## What is in the box
 
@@ -57,6 +104,10 @@ with `useBarKeys({ "\\": () => setCollapsed(c => !c) })`. Make the stage under t
 | `ReadyMark` | "Nothing open here" — a statement, not a control. Always present, lit green or faded back, so the bar's end never moves. |
 | `Widest` | The width trick behind `BarSelect`: every possible label stacked invisibly under the live one. |
 | `CollapsedPill` | The bar minimised: draggable, remembers where it was put, click reopens. |
+| `Stage` | Everything under the bar: desktop fills, mobile is a 390×844 frame, on a phone the frame is the window. `overlay` is where the notes layer goes. |
+| `NotesMenu` | The bar's notes control: a toggle with the open count, and the list of every note with a jump back to each. |
+| `NotesLayer` | The pins, the composer, the ⌥ pass-through, the overlay scoping. |
+| `useNotesStore` / `notesStore` | The whole file as state, and where it is being kept. |
 | `useBarKeys` | Single-key shortcuts, ignored while typing. |
 | `usePhone` / `PHONE_PANEL` | The 640px line, as a hook and as the classes a menu panel wears to sit under the bar on a phone. |
 | `trigger` / `triggerPrimary` / `iconBtn` | The three class strings every control is built from, for anything you add. |
@@ -77,7 +128,7 @@ with `useBarKeys({ "\\": () => setCollapsed(c => !c) })`. Make the stage under t
 
 ## Not included, on purpose
 
-The notes layer (pins on the screen, a menu counting them), the open-questions menu and
-the saved-versions picker are EDLock's — each is wired to a store and a screen registry
-that would come along with it. They are what the `tail` slot is for. When one of them is
+The open-questions menu (answer an open question both ways from the bar, with replies
+filed against it) and the saved-versions picker are EDLock's — each is wired to a screen
+registry that would come along with it. They are what the `tail` slot is for. When one is
 wanted a second time, that is the day to lift it out.
