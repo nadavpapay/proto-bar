@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --port ${PORT:-4710} --strictPort",
     "build": "tsc -b && vite build",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "start": "node server.cjs"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -22,5 +23,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
