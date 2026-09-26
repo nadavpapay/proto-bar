@@ -18,9 +18,11 @@ export {
   type BarOption,
   type Viewport,
 } from "./parts";
+export { CHROME, chrome, isChrome, setNotesMode, useNotesMode } from "./chrome";
 export { CollapsedPill } from "./CollapsedPill";
 export { Stage } from "./Stage";
+export { useUrlState } from "./url";
 export { NotesLayer } from "./notes/NotesLayer";
 export { NotesMenu } from "./notes/NotesMenu";
 export { useNotesStore } from "./notes/useNotes";
-export { asText, newId, notesStore, type Note, type Where } from "./notes/store";
+export { ROUTE, asText, byline, newId, notesStore, type Note, type Where } from "./notes/store";

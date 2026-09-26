@@ -20,8 +20,9 @@
 // all is the screen nobody has reviewed.
 
 import { useEffect, useRef, useState } from "react";
+import { chrome } from "../chrome";
 import { PHONE_PANEL } from "../parts";
-import { asText, type Note, type Where } from "./store";
+import { asText, byline, type Note, type Where } from "./store";
 
 export function NotesMenu({
   notes,
@@ -33,6 +34,7 @@ export function NotesMenu({
   onShowDone,
   where,
   onJump,
+  file = "notes.json",
 }: {
   notes: Note[];
   /** How many OPEN notes are on the screen currently open. */
@@ -45,18 +47,30 @@ export function NotesMenu({
   onShowDone: (show: boolean) => void;
   where: Where;
   onJump: (n: Note) => void;
+  /** The repo file the notes server writes, named in the line that says where
+   *  they are kept. */
+  file?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
 
+  // A press outside closes it, and so does Escape — one level at a time, which
+  // is why the phone tray around it does not close on Escape too.
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) setOpen(false);
     };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     window.addEventListener("mousedown", away);
-    return () => window.removeEventListener("mousedown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", away);
+      window.removeEventListener("keydown", esc);
+    };
   }, [open]);
 
   const live = notes.filter((n) => !n.done);
@@ -64,7 +78,7 @@ export function NotesMenu({
   const shown = showDone ? notes : live;
 
   return (
-    <div ref={box} className="relative flex shrink-0 items-center">
+    <div ref={box} {...chrome} className="relative flex shrink-0 items-center">
       <button
         type="button"
         onClick={onToggle}
@@ -161,7 +175,7 @@ export function NotesMenu({
               best one. */}
           <p className="px-1.5 pb-1.5 text-[10px] leading-relaxed text-ui-dim">
             {where === "file"
-              ? "Saved to notes.json in the repo — say “look at the notes” and they get read."
+              ? `Saved to ${file} in the repo — say “look at the notes” and they get read.`
               : where === "inbox"
                 ? "Saved on the server and kept through redeploys. They land in the repo next time the dev server runs."
                 : "Nothing to save to from here, so these live in this browser only. Use Copy all and paste them into the chat."}
@@ -209,6 +223,7 @@ export function NotesMenu({
                         therefore not drawn — this is the line that says what
                         to open. */}
                     {n.scope ? ` · on “${n.scope}”` : ""}
+                    {byline(n) ? ` · ${byline(n)}` : ""}
                   </span>
                 </span>
               </button>

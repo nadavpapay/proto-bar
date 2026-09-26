@@ -10,12 +10,11 @@
 //   Here, on the dev server → straight into `notes.json`, which is in git.
 //
 //   On the public link → into an inbox on that server's own volume (see
-//   `server.cjs`), since it has no way to reach this repo. When `inbox` is
-//   set, this middleware DRAINS it every time it is asked for notes: copies
-//   anything new into `notes.json`, then deletes exactly what it copied. So a
-//   note taken on a phone at the weekend is in the repo the next time the dev
-//   server is used. Draining rather than syncing is deliberate — a two-way
-//   sync would resurrect notes that were deliberately deleted here.
+//   `server.cjs`, or `next-notes.ts`), since it has no way to reach this repo.
+//   When `inbox` is set, this middleware COLLECTS from it every time it is asked
+//   for notes: lays whatever the link has not handed over yet onto `notes.json`
+//   — new notes, edits, "done", deletes — and tells the inbox which it took.
+//   The rules are in `notes-sync.ts`.
 //
 // `apply: "serve"` — dev server only. Add it to `vite.config.ts`:
 //
@@ -24,55 +23,51 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Plugin } from "vite";
+import { overlay, queue, type Entry, type Note } from "./notes-sync.ts";
 
-const ROUTE = "/__notes";
-
-/** The drain must never make the local endpoint slow or fragile — it is a
+/** The collect must never make the local endpoint slow or fragile — it is a
  *  convenience on top of a file read, not a dependency of it. */
 const INBOX_TIMEOUT = 2500;
 
-interface Note {
-  id: string;
-  [k: string]: unknown;
-}
-
-async function drain(inbox: string, existing: Note[]): Promise<Note[]> {
+async function collect(inbox: string, local: Note[]): Promise<Note[]> {
   try {
-    const res = await fetch(inbox, {
+    const res = await fetch(`${inbox}?inbox=1`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(INBOX_TIMEOUT),
     });
-    if (!res.ok) return existing;
-    const body = (await res.json()) as { notes?: Note[] };
-    const incoming = Array.isArray(body?.notes) ? body.notes : [];
-    if (incoming.length === 0) return existing;
+    if (!res.ok) return local;
+    const body = (await res.json()) as { entries?: Entry[] };
+    const entries = Array.isArray(body?.entries) ? body.entries.filter((e) => e?.id) : [];
+    if (entries.length === 0) return local;
 
-    const known = new Set(existing.map((n) => n.id));
-    const fresh = incoming.filter((n) => n?.id && !known.has(n.id));
-
-    // Delete everything that was seen, not only what was new: an id already in
-    // the file is a note that has been collected before, and leaving it in the
-    // inbox means draining it again forever.
-    await fetch(`${inbox}?ids=${incoming.map((n) => n.id).join(",")}`, {
-      method: "DELETE",
+    const merged = overlay(local, entries, "");
+    // Named back with the stamp each was read at, so an entry rewritten on the
+    // link a second ago is not marked as taken.
+    await fetch(`${inbox}?collected=1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entries.map((e) => ({ id: e.id, saved: e.saved }))),
       signal: AbortSignal.timeout(INBOX_TIMEOUT),
     }).catch(() => {});
 
-    if (fresh.length) console.log(`[notes] collected ${fresh.length} from the public link`);
-    return [...existing, ...fresh];
+    console.log(`[notes] collected ${entries.length} change${entries.length === 1 ? "" : "s"} from the public link`);
+    return merged;
   } catch {
     // Offline, or the deployment is down. Local notes are unaffected.
-    return existing;
+    return local;
   }
 }
 
 export function notesFile({
   file = "notes.json",
+  route = "/__notes",
   inbox,
 }: {
   /** Relative to the Vite root. */
   file?: string;
-  /** The deployed server's `/__notes`, to collect from. Off when absent. */
+  /** Where the page asks for notes — pass the same to `useNotesStore`. */
+  route?: string;
+  /** The deployed server's notes route, to collect from. Off when absent. */
   inbox?: string;
 } = {}): Plugin {
   return {
@@ -80,6 +75,7 @@ export function notesFile({
     apply: "serve",
     configureServer(server) {
       const dest = path.join(server.config.root, file);
+      const serial = queue();
 
       const read = async (): Promise<Note[]> => {
         try {
@@ -109,14 +105,19 @@ export function notesFile({
         await rename(tmp, dest);
       };
 
-      server.middlewares.use(ROUTE, async (req, res) => {
+      server.middlewares.use(route, async (req, res) => {
         res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
 
         if (req.method === "GET") {
-          const local = await read();
-          const merged = inbox ? await drain(inbox, local) : local;
-          if (merged.length !== local.length) await write(merged);
-          res.end(JSON.stringify({ store: "file", notes: merged }));
+          const notes = await serial(async () => {
+            const local = await read();
+            if (!inbox) return local;
+            const merged = await collect(inbox, local);
+            if (merged !== local) await write(merged);
+            return merged;
+          });
+          res.end(JSON.stringify({ store: "file", notes }));
           return;
         }
 
@@ -126,8 +127,8 @@ export function notesFile({
           try {
             const notes = JSON.parse(Buffer.concat(chunks).toString("utf8"));
             if (!Array.isArray(notes)) throw new Error("not an array");
-            await write(notes);
-            res.end(JSON.stringify({ ok: true, store: "file", count: notes.length }));
+            await serial(() => write(notes));
+            res.end(JSON.stringify({ ok: true, store: "file", notes }));
           } catch (err) {
             res.statusCode = 400;
             res.end(JSON.stringify({ ok: false, error: String(err) }));

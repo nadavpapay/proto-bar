@@ -2,8 +2,9 @@
 //
 // The demo `npm run dev` shows, and the shape to copy: state in the app, the
 // bar told what it is and what to call, the notes layer over the stage.
-// Nothing here persists to the URL — that is the app's business, and a
-// `useSearchParams` around this state is all it takes.
+// The pickers live in the address (`useUrlState`), so a link opens the same
+// screen, viewport, state and notes; the map and the prototype switch do not,
+// to show that nothing has to.
 
 import { useState } from "react";
 import {
@@ -20,6 +21,8 @@ import {
   newId,
   useBarKeys,
   useNotesStore,
+  usePhone,
+  useUrlState,
   type Note,
   type Viewport,
 } from ".";
@@ -43,12 +46,16 @@ const VERSIONS = [
   { id: "v1", label: "v1" },
 ];
 
+const ids = (list: { id: string }[]) => list.map((o) => o.id);
+
 export function Example() {
+  const phone = usePhone();
   const [collapsed, setCollapsed] = useState(false);
-  const [screen, setScreen] = useState("orders");
-  const [version, setVersion] = useState("v3");
-  const [viewport, setViewport] = useState<Viewport>("desktop");
-  const [state, setState] = useState("default");
+  const [screen, setScreen] = useUrlState("screen", "orders", ids(SCREENS));
+  const [version, setVersion] = useUrlState("version", "v3", ids(VERSIONS));
+  // Opened on a phone, the phone layout is the one worth seeing first.
+  const [viewport, setViewport] = useUrlState<Viewport>("v", phone ? "mobile" : "desktop", ["desktop", "mobile"]);
+  const [state, setState] = useUrlState("state", "default", ids(STATES));
   const [proto, setProto] = useState("wire");
   const [map, setMap] = useState(false);
 
@@ -58,8 +65,11 @@ export function Example() {
   // and a viewport; the version and state are recorded on it but do NOT hide
   // it — a pin that vanishes when a selector moves reads as a lost note.
   const { notes, write, where } = useNotesStore();
-  const [notesOn, setNotesOn] = useState(false);
+  const [notesParam, setNotesParam] = useUrlState("notes", "off", ["on", "off"]);
+  const notesOn = notesParam === "on";
+  const setNotesOn = (on: boolean) => setNotesParam(on ? "on" : "off");
   const [showDone, setShowDone] = useState(false);
+  const [focus, setFocus] = useState<string | null>(null);
   const here = notes.filter((n) => n.screen === screen && n.viewport === viewport);
   const openHere = here.filter((n) => !n.done);
 
@@ -77,11 +87,12 @@ export function Example() {
     if (n.context?.state) setState(n.context.state);
     setNotesOn(true);
     if (n.done) setShowDone(true);
+    setFocus(n.id);
   };
 
   useBarKeys({
     "\\": () => setCollapsed((c) => !c),
-    n: () => setNotesOn((on) => !on),
+    n: () => setNotesOn(!notesOn),
   });
 
   const label = SCREENS.find((s) => s.id === screen)?.label ?? screen;
@@ -174,6 +185,8 @@ export function Example() {
                 onToggle={toggle}
                 onDelete={remove}
                 newId={newId}
+                focus={focus}
+                onFocused={() => setFocus(null)}
               />
             ) : null
           }

@@ -20,7 +20,8 @@
 //     growing when the count does — see `ReadyMark`, and do the same in any
 //     menu you put in the tail.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { chrome } from "./chrome";
 
 // ─── Trigger styles ───────────────────────────────────────────────────────────
 //
@@ -45,14 +46,21 @@ export const iconBtn =
 /** Single-key shortcuts for the bar. `\` hides the chrome by convention; add
  *  whatever else the bar toggles (`n` for a notes layer, say). Ignored while
  *  typing and under any modifier, so nothing fires from a field inside a
- *  drawing. Keys are matched case-insensitively. */
+ *  drawing. Keys are matched case-insensitively.
+ *
+ *  WHATEVER LANGUAGE THE KEYBOARD IS IN. On a Hebrew layout the N key types
+ *  "מ", and a shortcut matched on the typed letter never fires. So a key that
+ *  types a Latin character is matched on that character — an AZERTY or Dvorak
+ *  user presses the key marked N — and any other key on its position, as a US
+ *  keyboard would read it. */
 export function useBarKeys(keys: Record<string, () => void>) {
   const ref = useRef(keys);
   ref.current = keys;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const fn = ref.current[e.key] ?? ref.current[e.key.toLowerCase()];
+      const k = /^[\x20-\x7e]$/.test(e.key) ? e.key : (byPosition(e.code) ?? e.key);
+      const fn = ref.current[k] ?? ref.current[k.toLowerCase()];
       if (!fn) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))
@@ -65,6 +73,26 @@ export function useBarKeys(keys: Record<string, () => void>) {
   }, []);
 }
 
+/** What a US keyboard types at this position — `KeyN` → "n". */
+function byPosition(code: string): string | undefined {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  return PUNCTUATION[code];
+}
+const PUNCTUATION: Record<string, string> = {
+  Backslash: "\\",
+  Slash: "/",
+  Period: ".",
+  Comma: ",",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Minus: "-",
+  Equal: "=",
+  Backquote: "`",
+};
+
 // ─── Phone ────────────────────────────────────────────────────────────────────
 
 /** The window is a phone — under the `sm` breakpoint, 640px, the same line the
@@ -76,18 +104,19 @@ export function useBarKeys(keys: Record<string, () => void>) {
  *  This is about the WINDOW, not the stage: a viewport switch on the bar says
  *  which layout the prototype draws; this says which device it is looked at on. */
 export function usePhone() {
-  const [phone, setPhone] = useState(
-    () => typeof window !== "undefined" && window.matchMedia(PHONE).matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(PHONE);
-    const on = () => setPhone(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return phone;
+  // Read as an external store, so a server-rendered page (Next) draws the
+  // desktop bar on the server, then settles on the right one once loaded,
+  // without React finding two different bars and without a flash on a
+  // client-only page.
+  return useSyncExternalStore(onPhoneChange, isPhone, () => false);
 }
 const PHONE = "(max-width: 639px)";
+const isPhone = () => window.matchMedia(PHONE).matches;
+function onPhoneChange(f: () => void) {
+  const mq = window.matchMedia(PHONE);
+  mq.addEventListener("change", f);
+  return () => mq.removeEventListener("change", f);
+}
 
 /** How a menu's panel sits on a phone: fixed to the window, the window's width
  *  less a 12px gutter, under the bar's 44px row — instead of hanging off its
@@ -129,6 +158,11 @@ export const PHONE_PANEL =
  * outside it — NOT on Escape, because the menus inside it close on Escape one
  * level at a time, and a tray that closed on the same key would take a
  * half-closed menu down with it.
+ *
+ * IT SAYS HOW TALL IT IS. While it is up, `--proto-bar-h` on the root element
+ * is its height, and 0px once it is hidden — so a page that has a sticky header
+ * of its own can sit it under the bar with `top: var(--proto-bar-h, 0px)`
+ * instead of being covered by it.
  */
 export function BarFrame({
   caption,
@@ -138,6 +172,7 @@ export function BarFrame({
   children,
   tail,
   onCollapsed,
+  hideKey = "\\",
 }: {
   /** The job's name and nothing more. Shown from 1600px up. */
   caption?: string;
@@ -155,10 +190,26 @@ export function BarFrame({
   /** The review group on the right — counters, modes, the ready mark. */
   tail?: ReactNode;
   onCollapsed: (c: boolean) => void;
+  /** The key wired to hide the bar, named in the hide button's tooltip. */
+  hideKey?: string;
 }) {
   const phone = usePhone();
   const [tray, setTray] = useState(false);
   const box = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const put = () => root.style.setProperty("--proto-bar-h", `${el.offsetHeight}px`);
+    put();
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.setProperty("--proto-bar-h", "0px");
+    };
+  }, [phone]);
 
   // The tray goes away with the phone layout, so a window widened past 640px
   // does not keep an invisible tray open.
@@ -179,8 +230,9 @@ export function BarFrame({
     return (
       <header
         ref={box}
+        {...chrome}
         dir="ltr"
-        className="relative z-[60] flex h-11 shrink-0 items-center gap-2 border-b border-ui-line/70 bg-ui-surface px-3"
+        className="pointer-events-auto relative z-[60] flex h-11 shrink-0 items-center gap-2 border-b border-ui-line/70 bg-ui-surface px-3"
       >
         {leadCompact ?? lead}
         {primary}
@@ -195,7 +247,7 @@ export function BarFrame({
           >
             <Dots />
           </button>
-          <BarTail onCollapsed={onCollapsed} />
+          <BarTail onCollapsed={onCollapsed} hideKey={hideKey} />
         </div>
         {tray ? (
           <div className="absolute inset-x-0 top-full z-[60] flex flex-wrap items-center gap-2 border-b border-ui-line/70 bg-ui-surface px-3 py-3 shadow-2xl">
@@ -213,10 +265,12 @@ export function BarFrame({
 
   return (
     <header
+      ref={box}
+      {...chrome}
       dir="ltr"
       // z-[60], above anything a drawing puts on its own stage: a modal at z-50
       // must not paint over a menu the bar opens about it.
-      className="sticky top-0 z-[60] flex min-h-11 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-ui-line/70 bg-ui-surface px-4 py-2 min-[1440px]:gap-x-3"
+      className="pointer-events-auto sticky top-0 z-[60] flex min-h-11 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-ui-line/70 bg-ui-surface px-4 py-2 min-[1440px]:gap-x-3"
     >
       {caption ? (
         <>
@@ -232,7 +286,7 @@ export function BarFrame({
       {children}
       <div className="ms-auto flex shrink-0 items-center gap-2 ps-2">
         {tail}
-        <BarTail onCollapsed={onCollapsed} />
+        <BarTail onCollapsed={onCollapsed} hideKey={hideKey} />
       </div>
     </header>
   );
@@ -250,12 +304,19 @@ function Dots() {
 
 /** Hide the bar. The last control, in the same place on every bar, because it
  *  is the one that has nothing to do with what is on the stage. */
-export function BarTail({ onCollapsed }: { onCollapsed: (c: boolean) => void }) {
+export function BarTail({
+  onCollapsed,
+  hideKey = "\\",
+}: {
+  onCollapsed: (c: boolean) => void;
+  /** Whatever key the job wired to hide it — the tooltip names that one. */
+  hideKey?: string;
+}) {
   return (
     <button
       type="button"
       onClick={() => onCollapsed(true)}
-      title="Hide the bar  (\)"
+      title={`Hide the bar  (${hideKey})`}
       aria-label="Hide the bar"
       className={iconBtn}
     >
@@ -289,7 +350,9 @@ export function Widest({
 }) {
   return (
     <span className={`grid ${className}`}>
-      {all.map((t) => (
+      {/* Once each: a label two options share is still one width, and two
+          ghosts with one key is a React warning. */}
+      {[...new Set(all)].map((t) => (
         <span key={t} aria-hidden className="invisible col-start-1 row-start-1 whitespace-nowrap">
           {t}
         </span>
@@ -325,6 +388,7 @@ export function BarSelect({
   primary = false,
   className = "",
   title,
+  sizeTo,
 }: {
   options: BarOption[];
   value: string;
@@ -336,11 +400,14 @@ export function BarSelect({
   /** Extra classes for the label's metrics — `tabular-nums`, `text-ui-dim`. */
   className?: string;
   title?: string;
+  /** The labels to size the trigger to, when the picker swaps between lists —
+   *  every list's labels, so it is one width whichever list is in it. */
+  sizeTo?: string[];
 }) {
   const current = options.find((o) => o.id === value);
   return (
     <label className={`${primary ? triggerPrimary : trigger} relative`} title={title}>
-      <Widest all={options.map((o) => o.label)} className={className}>
+      <Widest all={sizeTo ?? options.map((o) => o.label)} className={className}>
         {current?.label ?? value}
       </Widest>
       <Chevron />
@@ -396,13 +463,17 @@ export function Segments({
   value,
   onChange,
   label,
+  showLabel = false,
   dim = false,
 }: {
   options: BarOption[];
   value: string;
   onChange: (id: string) => void;
-  /** For the screen reader. */
+  /** For the screen reader — and on the control itself with `showLabel`. */
   label: string;
+  /** Say what the switch is for inside it ("Hero  Current | Coded"), when the
+   *  options alone do not. */
+  showLabel?: boolean;
   dim?: boolean;
 }) {
   return (
@@ -411,6 +482,11 @@ export function Segments({
       aria-label={label}
       className="flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-ui-line/70 p-px"
     >
+      {showLabel ? (
+        <span aria-hidden className="ps-1.5 pe-1 text-[10px] font-medium text-ui-dim">
+          {label}
+        </span>
+      ) : null}
       {options.map((o) => (
         <Segment key={o.id} active={value === o.id} onClick={() => onChange(o.id)} dim={dim}>
           {o.label}

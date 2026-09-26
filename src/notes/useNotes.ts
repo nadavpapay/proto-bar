@@ -8,13 +8,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { notesStore, type Note, type Where } from "./store";
 
-export function useNotesStore(localKey?: string): {
+export function useNotesStore({
+  route,
+  localKey,
+}: {
+  /** Where the notes server answers. `/__notes` unless the job's server is
+   *  elsewhere — a Next route, a prototype served under a path. */
+  route?: string;
+  /** The browser fallback's key, one per prototype on an origin. */
+  localKey?: string;
+} = {}): {
   notes: Note[];
   /** Writes the whole file. */
   write: (next: Note[]) => void;
   where: Where;
 } {
-  const store = useMemo(() => notesStore(localKey), [localKey]);
+  const store = useMemo(() => notesStore({ route, localKey }), [route, localKey]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [where, setWhere] = useState<Where>("browser");
 

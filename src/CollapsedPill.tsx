@@ -8,6 +8,7 @@
 // is a drag. Its position is remembered per `storeKey`.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { chrome } from "./chrome";
 
 const EDGE = 6;                       // how close to a window edge it may be dragged
 const BAR_INSET = 16;                 // the expanded bar's own px-4 gutter
@@ -37,6 +38,7 @@ export function CollapsedPill({
   title,
   onExpand,
   storeKey = "proto-bar:pill",
+  hideKey = "\\",
 }: {
   /** Named in the tooltip — the project or the screen, whatever the bar names. */
   title: string;
@@ -44,6 +46,8 @@ export function CollapsedPill({
   /** localStorage key the position is kept under. One per app, or two apps on
    *  one origin fight over the corner. */
   storeKey?: string;
+  /** The key wired to show the bar again, named in the tooltip. */
+  hideKey?: string;
 }) {
   const [pos, setPos] = useState<Pos>(() => {
     try {
@@ -119,10 +123,14 @@ export function CollapsedPill({
           onExpand();
         }
       }}
-      title={`${title} — show the bar  (\\)  ·  drag to move`}
+      title={`${title} — show the bar  (${hideKey})  ·  drag to move`}
       aria-label="Show the bar"
+      {...chrome}
       style={{ left: pos.x, top: pos.y, width: PILL.w, height: PILL.h, touchAction: "none" }}
-      className={`fixed z-50 flex select-none items-center justify-center rounded-md border border-ui-line bg-ui-surface/90 text-ui-dim shadow-lg backdrop-blur-sm transition-colors hover:text-ui-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-dim ${
+      // The bar's own level, above the app's dialogs and their backdrops — the
+      // way back to the bar must never be under the thing being reviewed.
+      // `pointer-events-auto` because a modal that is up turns them off.
+      className={`pointer-events-auto fixed z-[60] flex select-none items-center justify-center rounded-md border border-ui-line bg-ui-surface/90 text-ui-dim shadow-lg backdrop-blur-sm transition-colors hover:text-ui-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-dim ${
         dragging ? "cursor-grabbing" : "cursor-grab"
       }`}
     >

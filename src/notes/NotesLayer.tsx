@@ -28,10 +28,17 @@
 //
 // An overlay says its own name in `data-note-scope`. A name rather than the
 // heading, because the heading is Hebrew copy under review and gets reworded,
-// and a note whose pin disappears reads as a note that was lost.
+// and a note whose pin disappears reads as a note that was lost. It is looked
+// for in the whole document, not just under the stage: most dialog libraries
+// render at the end of the body.
+//
+// While the layer is up it tells the app's dialogs so (`setNotesMode`), because
+// a modal one would otherwise block every click on itself — see `chrome.ts`.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Note } from "./store";
+import { chrome, setNotesMode } from "../chrome";
+import { usePhone } from "../parts";
+import { byline, type Note } from "./store";
 
 export interface NotesLayerProps {
   notes: Note[];
@@ -44,6 +51,13 @@ export interface NotesLayerProps {
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   newId: () => string;
+  /** A note to bring into view and open — the list's jump. Scrolled to once
+   *  its pin is drawn, then `onFocused` is called so it is not done again. */
+  focus?: string | null;
+  onFocused?: (id: string) => void;
+  /** The "hold ⌥" hint. Off where nothing under the layer takes a click (a
+   *  slide); never shown on a phone, which has no ⌥ key. */
+  hint?: boolean;
 }
 
 type Draft = { x: number; y: number; id?: string; text: string };
@@ -53,6 +67,9 @@ type Box = { l: number; t: number; w: number; h: number };
 const PANEL = { w: 260, h: 140 };
 const PIN = 28;
 const EDGE = 8;
+
+/** The reviewer's name, asked once and remembered in this browser. */
+const BY_KEY = "proto-bar:notes:by";
 
 /**
  * Where a popover sits relative to its pin.
@@ -93,17 +110,14 @@ function popover(
  * through every screen to the shell would be a change to every screen, and a
  * change every new screen would have to remember to make.
  */
-function useOverlay(host: React.RefObject<HTMLDivElement | null>) {
+function useOverlay() {
   const [scope, setScope] = useState<{ name: string; el: HTMLElement } | null>(
     null,
   );
 
   useEffect(() => {
-    const parent = host.current?.parentElement;
-    if (!parent) return;
-
     const read = () => {
-      const all = parent.querySelectorAll<HTMLElement>("[data-note-scope]");
+      const all = document.querySelectorAll<HTMLElement>("[data-note-scope]");
       const el = all.length ? all[all.length - 1] : null;
       setScope((prev) => {
         if (!el) return prev === null ? prev : null;
@@ -126,12 +140,12 @@ function useOverlay(host: React.RefObject<HTMLDivElement | null>) {
 
     read();
     const mo = new MutationObserver(soon);
-    mo.observe(parent, { childList: true, subtree: true, attributes: true });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true });
     return () => {
       mo.disconnect();
       if (queued) cancelAnimationFrame(queued);
     };
-  }, [host]);
+  }, []);
 
   return scope;
 }
@@ -173,10 +187,14 @@ function useBox(
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     ro.observe(h);
+    // A fixed dialog stays put while the page under it scrolls, so the layer
+    // moves and the box has to be read again — on any scroll, anywhere.
     window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
     };
   }, [host, el]);
 
@@ -219,15 +237,36 @@ export function NotesLayer({
   onToggle,
   onDelete,
   newId,
+  focus,
+  onFocused,
+  hint = true,
 }: NotesLayerProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [by, setBy] = useState("");
 
-  const scope = useOverlay(host);
+  const scope = useOverlay();
   const box = useBox(host, scope?.el ?? null);
   const through = usePassThrough();
+  const phone = usePhone();
+
+  // Tell the app's dialogs the layer is up — see `chrome.ts`.
+  useEffect(() => {
+    setNotesMode(true);
+    return () => setNotesMode(false);
+  }, []);
+
+  // Read after load rather than while rendering, so a server-rendered page
+  // does not draw one thing on the server and another in the browser.
+  useEffect(() => {
+    try {
+      setBy(localStorage.getItem(BY_KEY) ?? "");
+    } catch {
+      // Asked again on each note, then.
+    }
+  }, []);
 
   const name = scope?.name ?? "";
   // A note is drawn only where it was written: on the plain screen, or on the
@@ -251,11 +290,26 @@ export function NotesLayer({
 
   // A half-written note belongs to what was on the screen when it was started.
   // Open a dialog with the composer up and it would be saved against the dialog
-  // at coordinates measured off the page.
+  // at coordinates measured off the page; change screen and it would be saved
+  // against a screen it was never about.
   useEffect(() => {
     setDraft(null);
     setOpen(null);
-  }, [name]);
+  }, [name, where.screen, where.viewport]);
+
+  // The jump: once the pin is drawn, bring it to the middle of the window and
+  // open it. Switching to its screen alone leaves a pin 900px down unseen.
+  useEffect(() => {
+    // Not before the layer knows its size: until then a pin sits at its
+    // percent of the visible box, not of the whole page.
+    if (!focus || !size) return;
+    const el = host.current?.querySelector<HTMLElement>(`[data-pin="${CSS.escape(focus)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", inline: "center" });
+    setDraft(null);
+    setOpen(focus);
+    onFocused?.(focus);
+  }, [focus, size, shown.length, onFocused]);
 
   // Escape closes whatever is open, then the composer. Nothing here should ever
   // need the mouse to get out of.
@@ -308,11 +362,20 @@ export function NotesLayer({
       setDraft(null);
       return;
     }
+    const who = by.trim();
+    if (!draft.id && who) {
+      try {
+        localStorage.setItem(BY_KEY, who);
+      } catch {
+        // Remembered for this note only, then.
+      }
+    }
     if (draft.id) onEdit(draft.id, text);
     else
       onAdd({
         ...where,
         ...(name ? { scope: name } : null),
+        ...(who ? { by: who } : null),
         id: newId(),
         x: draft.x,
         y: draft.y,
@@ -335,12 +398,15 @@ export function NotesLayer({
   return (
     <div
       ref={host}
+      {...chrome}
       dir="ltr"
       onClick={place}
       style={size ? { width: size.w, height: size.h } : undefined}
       // Under the bar (z-60) and over anything the screen draws.
+      // `pointer-events-auto` is explicit because a modal dialog that is up
+      // turns them off on everything outside itself.
       className={`absolute inset-0 z-[55] ${
-        through ? "pointer-events-none" : "cursor-crosshair"
+        through ? "pointer-events-none" : "pointer-events-auto cursor-crosshair"
       }`}
     >
       {/* A wash, so it is never in doubt that clicks are going to the notes
@@ -400,8 +466,27 @@ export function NotesLayer({
             onClick={(e) => e.stopPropagation()}
             className="pointer-events-auto absolute z-10 cursor-auto rounded-lg border border-ui-line bg-ui-surface p-2 shadow-xl"
           >
+            {/* Who is writing — asked on a new note, then remembered. A public
+                link is read by several people, and a note with no name is a
+                note nobody can answer. */}
+            {!draft.id ? (
+              <input
+                autoFocus={!by}
+                value={by}
+                onChange={(e) => setBy(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.currentTarget.parentElement?.querySelector("textarea")?.focus();
+                  }
+                }}
+                placeholder="Your name"
+                aria-label="Your name"
+                className="mb-1.5 h-7 w-full rounded-md border border-ui-line/70 bg-transparent px-2 text-[11px] text-ui-text outline-none placeholder:text-ui-dim"
+              />
+            ) : null}
             <textarea
-              autoFocus
+              autoFocus={!!by || !!draft.id}
               value={draft.text}
               onChange={(e) => setDraft({ ...draft, text: e.target.value })}
               onKeyDown={(e) => {
@@ -437,15 +522,17 @@ export function NotesLayer({
       {/* The one thing about this mode nobody would guess. Fixed rather than
           absolute because the layer is as tall as the scrolled content, and a
           hint at the bottom of that is a hint nobody ever sees. */}
-      <span
-        className={`pointer-events-none fixed bottom-3 left-3 rounded-md border border-ui-line/70 px-2 py-1 text-[10px] shadow-lg transition-colors ${
-          through
-            ? "border-sky-400/60 bg-sky-400/15 text-sky-200"
-            : "bg-ui-surface/90 text-ui-dim"
-        }`}
-      >
-        {through ? "clicks go to the screen" : "hold ⌥ to use the screen"}
-      </span>
+      {hint && !phone ? (
+        <span
+          className={`pointer-events-none fixed bottom-3 left-3 rounded-md border border-ui-line/70 px-2 py-1 text-[10px] shadow-lg transition-colors ${
+            through
+              ? "border-sky-400/60 bg-sky-400/15 text-sky-200"
+              : "bg-ui-surface/90 text-ui-dim"
+          }`}
+        >
+          {through ? "clicks go to the screen" : "hold ⌥ to use the screen"}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -479,6 +566,7 @@ function Pin({
     >
       <button
         type="button"
+        data-pin={n.id}
         onClick={onOpen}
         title={n.text}
         // The point of the pin is the top-left corner of the marker, which is
@@ -504,6 +592,7 @@ function Pin({
           <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-ui-text">
             {n.text}
           </p>
+          <p className="mt-1 text-[10px] text-ui-dim">{byline(n)}</p>
           <div className="mt-2 flex items-center gap-2 border-t border-ui-line/70 pt-2">
             <button
               type="button"

@@ -17,6 +17,11 @@
 //   real and survive a reload, but they are inside one browser and have to be
 //   sent over with Copy all.
 //
+// THE BROWSER IS NOT A MIRROR. It holds notes only while a server could not be
+// reached, and is emptied the moment one takes them. A browser that kept a copy
+// of every save would hand a note deleted in the repo straight back to the
+// server the next time that reviewer opened the link.
+//
 // The endpoints answer with `{ store, notes }` rather than a bare array. A
 // static server answers unknown paths with index.html and a 200, so a response
 // only counts when it is actually JSON of that shape — without the check a
@@ -55,22 +60,40 @@ export interface Note {
   /** ISO. Order matters more than the clock. */
   at: string;
   done?: boolean;
+  /** Who wrote it — the name they gave the composer, remembered per browser. A
+   *  file of notes from three reviewers with no names is a file nobody can
+   *  answer. */
+  by?: string;
 }
 
-/** The endpoint both servers answer on. */
+/** The address the notes servers answer on unless told otherwise. A Next app
+ *  uses its own route — see `next-notes.ts`. */
 export const ROUTE = "/__notes";
 
 export type Where = "file" | "inbox" | "browser";
 
-/** One store, keyed so two prototypes on one origin do not share a browser
- *  fallback. */
-export function notesStore(localKey = "proto-bar:notes") {
+/** One store. `localKey` so two prototypes on one origin do not share a
+ *  browser fallback; `route` for a server that answers somewhere else. */
+export function notesStore({
+  route = ROUTE,
+  localKey = "proto-bar:notes",
+}: { route?: string; localKey?: string } = {}) {
   function fromLocal(): Note[] {
     try {
       const raw = localStorage.getItem(localKey);
       return raw ? (JSON.parse(raw) as Note[]) : [];
     } catch {
       return [];
+    }
+  }
+
+  function toLocal(notes: Note[] | null) {
+    try {
+      if (notes) localStorage.setItem(localKey, JSON.stringify(notes));
+      else localStorage.removeItem(localKey);
+    } catch {
+      // Nothing left to try. The panel reports "browser" and Copy all is the
+      // way out.
     }
   }
 
@@ -82,24 +105,22 @@ export function notesStore(localKey = "proto-bar:notes") {
 
   async function load(): Promise<{ notes: Note[]; where: Where }> {
     try {
-      const res = await fetch(ROUTE, { headers: { Accept: "application/json" } });
+      // Never from a cache — a CDN or Next's fetch cache answering with an old
+      // list is a note that looks lost.
+      const res = await fetch(route, { headers: { Accept: "application/json" }, cache: "no-store" });
       const type = res.headers.get("content-type") ?? "";
       if (res.ok && type.includes("application/json")) {
         const parsed = shape(await res.json());
         if (parsed) {
-          // Anything stranded in this browser from a session before the
-          // endpoint existed comes along, rather than sitting there unread.
+          // Anything written here while no server could be reached comes along
+          // now, rather than sitting in this browser unread.
           const stray = fromLocal().filter((n) => !parsed.notes.some((x) => x.id === n.id));
           if (stray.length) {
             const merged = [...parsed.notes, ...stray];
-            await save(merged);
-            try {
-              localStorage.removeItem(localKey);
-            } catch {
-              // Saved server-side; a stale local copy is harmless.
-            }
-            return { notes: merged, where: parsed.where };
+            const landed = await save(merged);
+            return { notes: merged, where: landed };
           }
+          toLocal(null);
           return parsed;
         }
       }
@@ -113,7 +134,7 @@ export function notesStore(localKey = "proto-bar:notes") {
    *  last time — a dev server can be restarted out from under an open tab. */
   async function save(notes: Note[]): Promise<Where> {
     try {
-      const res = await fetch(ROUTE, {
+      const res = await fetch(route, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(notes),
@@ -122,25 +143,15 @@ export function notesStore(localKey = "proto-bar:notes") {
       if (res.ok && type.includes("application/json")) {
         const body = (await res.json()) as { ok?: boolean; store?: string };
         if (body?.ok) {
-          // The server has it, and the browser keeps a copy in case this
-          // machine is the only place it ever existed.
-          try {
-            localStorage.setItem(localKey, JSON.stringify(notes));
-          } catch {
-            // Server-side is the one that matters.
-          }
+          // A server has them, so this browser lets go.
+          toLocal(null);
           return body.store === "inbox" ? "inbox" : "file";
         }
       }
     } catch {
       // Fall through to the browser.
     }
-    try {
-      localStorage.setItem(localKey, JSON.stringify(notes));
-    } catch {
-      // Nothing left to try. The panel reports "browser" and Copy all is the
-      // way out.
-    }
+    toLocal(notes);
     return "browser";
   }
 
@@ -161,7 +172,17 @@ export function asText(notes: Note[]): string {
         .map(([k, v]) => `${k}=${v}`)
         .join(", ");
       const where = `${n.screen} · ${n.viewport}${ctx ? ` · ${ctx}` : ""}${n.scope ? ` · on “${n.scope}”` : ""}`;
-      return `${i + 1}. [${where}]${n.done ? " (done)" : ""}\n   ${n.text}`;
+      const who = n.by ? ` — ${n.by}` : "";
+      return `${i + 1}. [${where}]${who}${n.done ? " (done)" : ""}\n   ${n.text}`;
     })
     .join("\n");
 }
+
+/** "Dana · 24 Sep" — who and when is enough on a review. Spelled out rather
+ *  than left to the browser, which writes "Sept" in some places. */
+export function byline(n: Note): string {
+  const d = new Date(n.at);
+  const when = Number.isNaN(d.getTime()) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return [n.by, when].filter(Boolean).join(" · ");
+}
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
