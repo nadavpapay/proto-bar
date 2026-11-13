@@ -14,4 +14,8 @@
   --color-ui-line: #2c3037;
   --color-ui-text: #e8eaed;
   --color-ui-dim: #8b9099;
+  /* The canvas under the screen: light, so a dark product stands clear of the
+     dark bar and rail. */
+  --color-ui-canvas: #e3e4e7;
+  --color-ui-canvas-dot: #c2c5cb;
 }

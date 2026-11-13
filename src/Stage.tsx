@@ -19,10 +19,10 @@ import { usePhone, type Viewport } from "./parts";
 
 const MOBILE = { w: 390, h: 844 };
 
-// The canvas: the bar's own ground with a faint 20px dot grid on it.
+// The canvas: a light gray with a faint 20px dot grid on it.
 const CANVAS: CSSProperties = {
-  backgroundColor: "var(--color-ui-bg)",
-  backgroundImage: "radial-gradient(circle, var(--color-ui-line) 1px, transparent 1.5px)",
+  backgroundColor: "var(--color-ui-canvas)",
+  backgroundImage: "radial-gradient(circle, var(--color-ui-canvas-dot) 1px, transparent 1.5px)",
   backgroundSize: "20px 20px",
   backgroundPosition: "10px 10px",
 };
@@ -66,7 +66,7 @@ export function Stage({
             dir={dir}
             lang={lang}
             style={{ width: MOBILE.w, height: MOBILE.h, ...style }}
-            className={`relative shrink-0 overflow-hidden rounded-[28px] shadow-2xl ring-1 ring-white/10 ${className}`}
+            className={`relative shrink-0 overflow-hidden rounded-[28px] shadow-2xl ring-1 ring-black/15 ${className}`}
           >
             {children}
             {overlay}
@@ -100,7 +100,7 @@ export function Stage({
         dir={dir}
         lang={lang}
         style={style}
-        className={`relative min-h-0 flex-1 overflow-auto rounded-xl shadow-2xl ring-1 ring-white/10 ${className}`}
+        className={`relative min-h-0 flex-1 overflow-auto rounded-xl shadow-2xl ring-1 ring-black/15 ${className}`}
       >
         {children}
         {overlay}
