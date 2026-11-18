@@ -9,11 +9,16 @@ Plus the review notes: pins dropped on the screen with a sentence each, saved to
 the repo so the agent reads them on "look at the notes", collected off the public link when
 there is one.
 
+Plus the **handoff** variation: the same bar for the version that goes to the developers.
+The name is fixed and wears a Handoff mark, and the tail holds what a developer reaches
+for — a Code menu with a prompt for their coding agent and downloads, every state, what
+changed, and the implementation notes — with a pack for their agent built beside the page.
+
 Nothing in it knows what project it is in. There is no router and no screen registry —
 what goes in the slots is yours.
 
 ```bash
-cd ~/dev/proto-bar && npm run dev      # the demo, port 4710
+cd ~/dev/proto-bar && npm run dev      # the demos, port 4710: the review bar at /, the handoff bar at /handoff/
 ```
 
 ## Using it in a project
@@ -145,6 +150,74 @@ Dialogs rendered at the end of the page (most libraries do) are found wherever t
   wiped by the collect. The inbox marks what it hands over rather than deleting it for
   this reason.
 
+## Handoff
+
+The bar for the version that goes to engineering. Same frame, two ends swapped:
+
+- **Lead:** `<HandoffName />` — "HANDOFF  Shop admin v1.1". No version picker: every
+  decision is closed.
+- **Tail:** `<HandoffTail screen={screen} />` — Code, States, Changes (with a dot while
+  this browser has not seen one), Implementation notes. The three pages open in one sheet
+  beside the prototype, which stays live.
+
+The **Code** menu, in the order a developer needs it: **Copy for your agent** (a prompt for
+the screen on the page: get the pack, read AGENTS.md, then that screen's brief, then plan),
+**Download** (this screen with its brief, pictures and source; its brief; its pictures; the
+whole pack; all the notes), the screen's files and the shared ones (each opens on GitHub at
+the commit the page was built from, with its path a click from the clipboard), and the whole
+repo last. Each entry on **Changes** has its own Copy for your agent, for a developer who
+built the last version: change only that, don't rebuild the screen.
+
+`src/HandoffExample.tsx` is a whole one, at `/handoff/` in the demo.
+
+### Adding it to a project
+
+1. **Copy** `src/handoff/` beside the rest of `src/` (it uses `parts.tsx`, `chrome.ts` and
+   `tokens.css`), and `vite-handoff.ts` + `handoff-pack.mts` beside `vite.config.ts`. If
+   `src/` lands somewhere else, fix the one import at the top of each of those two files.
+2. **Install** the build-time pieces: `npm i -D marked puppeteer-core`. Nothing ships to the
+   page.
+3. **Write `handoff.config.ts`** at the root (the demo's is the template): name, slug,
+   version, the deployed `address`, the GitHub `repo`, and for every screen its `files`, the
+   `notes` sections it carries and its `states`, each a query string that opens it. The
+   prototype has to open any state from its address — `useUrlState` does that.
+4. **Write the notes and changes** — `handoff/NOTES.md` (one `## Title {#id}` section per
+   rule) and `handoff/CHANGES.md` (the comment at its top says how an entry is written).
+   `PRODUCT.md` is optional: where it goes in the product and what to set up first.
+5. **Wire the plugin:** `plugins: [react(), tailwindcss(), handoff(config)]`, and add
+   `src/handoff/virtual.d.ts` to what TypeScript sees (it is, under `src/`).
+6. **Compose the bar:** `lead={<HandoffName />}`, `tail={<HandoffTail screen={screen} open={open} />}`.
+   `open(query)` opens a state in place; leave it out and a state's link loads its address.
+7. **Build and pack:** `vite build && node handoff-pack.mts` (`npm run handoff` here). Pass
+   `--dist` and `--base` when the build is not `dist` at `/`. Deploy `dist` as it is: the
+   pack is static files beside the page.
+
+Every file the config names is checked when the page builds and again when the pack does,
+so a screen that moved stops the build rather than shipping a link to nothing.
+
+### The pack
+
+`handoff-pack.mts` writes beside the built handoff page `pack.zip`, `pack/` (the pieces the
+Download list links to) and `llms.txt`, and adds a line to the page's HTML that sends an
+agent fetching it to `llms.txt`, since the page needs JavaScript. Unzipped into
+`.handoff/<slug>/` in the developer's repo, with a `.gitignore` that keeps it out of git and
+out of their agent's searches:
+
+| File | What it is |
+|---|---|
+| `AGENTS.md` (+ `CLAUDE.md`) | How to work from the folder; the screens; the rules that hold everywhere; what the prototype fakes |
+| `screens/<key>.md` | One brief per screen: every state with its address and picture, the files to read, what they import, its rules |
+| `shots/<key>/*.jpg` | A picture of every state, with the bar cropped off |
+| `source/` | The screens' files and everything they import, minus `source.skip` |
+| `changes/<id>.md` (+ `.diff`) | One brief per change: what changed, its impact, the files the commit that added it touched, and its diff |
+| `PRODUCT.md`, `notes.md`, `changes.md`, `VERSION` | Where it goes; the notes whole; the changes whole; version and commit |
+
+It is built from a commit and says so, so it refuses uncommitted files (`--dirty` to try
+it). A file that looks like it holds a key stops it: the pack is as public as the page.
+Pictures need a Chrome — set `HANDOFF_CHROME`, or
+`npx @puppeteer/browsers install chrome-headless-shell@stable` in the project; it runs over a
+pipe, so it ends with the script. `--no-shots` packs without them.
+
 ## What is in the box
 
 | Piece | What it is |
@@ -167,6 +240,9 @@ Dialogs rendered at the end of the page (most libraries do) are found wherever t
 | `useBarKeys` | Single-key shortcuts, ignored while typing. |
 | `usePhone` / `PHONE_PANEL` | The 640px line, as a hook and as the classes a menu panel wears to sit under the bar on a phone. |
 | `trigger` / `triggerPrimary` / `iconBtn` | The three class strings every control is built from, for anything you add. |
+| `HandoffName` / `HandoffTail` | The handoff bar's two ends: the fixed name with its mark, and Code, States, Changes and Implementation notes with the sheet they open in. From `src/handoff`. |
+| `CodeMenu` / `Sheet` / `StatesList` / `ChangesList` / `NotesDoc` | The pieces `HandoffTail` is made of, for a tail arranged differently. |
+| `vite-handoff.ts` / `handoff-pack.mts` / `handoff.config.ts` | The handoff's plugin (`virtual:handoff`), its pack builder, and the one file both read. |
 
 ## The rules it keeps
 
@@ -188,3 +264,7 @@ The open-questions menu (answer an open question both ways from the bar, with re
 filed against it) and the saved-versions picker are EDLock's — each is wired to a screen
 registry that would come along with it. They are what the `tail` slot is for. When one is
 wanted a second time, that is the day to lift it out.
+
+From the handoff: the rail of every flow down the side, a Restart key, and redrawing only
+the pictures a change touched. Each belongs to the project it grew in; the pack draws every
+state each time, which takes seconds at this size.

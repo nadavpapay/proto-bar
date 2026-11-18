@@ -2,6 +2,36 @@
 
 Newest first.
 
+## 18 Nov 2026 — the handoff variation, driven by one config file
+
+A handoff bar is a review bar with its two ends swapped: a fixed name with a Handoff mark
+where the version picker was, and the developer's tools in the tail — Code, States,
+Changes, Implementation notes — where the review notes were. Lifted from a project where
+it had been running for a month with two developers and their coding agents.
+
+**One file says what the handoff is.** `handoff.config.ts` lists every screen with its
+files, its note sections and its states as query strings. The bar's pickers, the States
+sheet and the pack all read it, so they cannot list different things. The project it came
+from read its states off a rendered `/states` page instead; a config is less clever and
+cannot drift.
+
+**The pack is the point.** A developer's agent pointed at the live link meets an empty page
+(it needs JavaScript), and one pointed at the repo reads all of it and plans from whatever
+it finds first. So the build writes a pack beside the page — a brief per screen, a picture
+per state, the source it names — and the Copy for your agent prompt says exactly which
+files to read in which order. The order is in the prompt as well as the pack, because an
+agent told it only inside the pack skipped it.
+
+**Markdown is rendered at build time.** `marked` runs in the Vite plugin, so the page
+ships HTML and no parser. `puppeteer-core` draws the pictures over a pipe, so Chrome ends
+with the script; no Chrome is bundled.
+
+**A notes section ends at any heading with an id of its own.** A screen that carries a
+section and its subsection by name would otherwise get the subsection twice.
+
+**Left behind:** the side rail, Restart, and redrawing only what a change touched. Each was
+the project's own; the last is worth lifting when a pack takes minutes to draw.
+
 ## 26 Sep 2026 — fixes from the copies brought back; the inbox marks, it does not delete
 
 Seven projects carry a copy. iPlan and snag-website were copied from EDLock, not from here,

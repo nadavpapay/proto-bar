@@ -10,3 +10,7 @@ notes.json
 notes.json.bak
 notes.json.tmp
 notes-inbox.json
+
+# The handoff pack's Chrome, if installed into the project, and an unpacked pack.
+chrome-headless-shell
+.handoff

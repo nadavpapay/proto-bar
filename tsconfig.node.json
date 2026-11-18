@@ -19,5 +19,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "vite-notes.ts", "notes-sync.ts"]
+  "include": ["vite.config.ts", "vite-notes.ts", "notes-sync.ts", "vite-handoff.ts", "handoff.config.ts", "handoff-pack.mts"]
 }
