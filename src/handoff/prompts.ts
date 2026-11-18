@@ -16,9 +16,11 @@ export const short = handoff.sha.slice(0, 7);
 export const version = `v${handoff.version}`;
 const folder = `${handoff.folder}/${handoff.slug}`;
 
-/** A file in the repo, at the commit the page was built from. */
-export const onGitHub = (path: string) => `https://github.com/${handoff.repo}/blob/${handoff.sha}/${path}`;
-export const repoHome = () => `https://github.com/${handoff.repo}/tree/${handoff.sha}`;
+/** A file in the repo, at the commit the page was built from — or nothing, when
+ *  the handoff names no repo and the pack is the only copy of the source. */
+export const onGitHub = (path: string) =>
+  handoff.repo ? `https://github.com/${handoff.repo}/blob/${handoff.sha}/${path}` : undefined;
+export const repoHome = () => (handoff.repo ? `https://github.com/${handoff.repo}/tree/${handoff.sha}` : undefined);
 
 /** A state's address on whatever host the page is open on. */
 export const pageHref = (query = "") => `${handoff.page}${query}`;

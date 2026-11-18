@@ -42,8 +42,10 @@ export interface HandoffConfig {
   version: string;
   /** The deployed handoff page, a full URL. The pack sits beside it. */
   address: string;
-  /** `owner/name` on GitHub, where every file in the Code menu opens. */
-  repo: string;
+  /** `owner/name` on GitHub, where every file in the Code menu opens. Leave it
+   *  out when the source must not be on GitHub: the pack carries it, and the
+   *  Code menu's files copy their path instead of opening. */
+  repo?: string;
   /** Where the pack unpacks in the developer's repo. Default `.handoff`. */
   folder?: string;
   /** The implementation notes: markdown, one `## Title {#id}` section per rule. */
@@ -111,7 +113,7 @@ export interface HandoffData {
   address: string;
   /** The handoff page's path, `/checkout/`, for links that stay on the host it is opened on. */
   page: string;
-  repo: string;
+  repo?: string;
   /** The commit the page was built from, or `main` outside git. */
   sha: string;
   folder: string;

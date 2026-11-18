@@ -6,6 +6,10 @@
 // opening on GitHub at the commit the page was built from; the whole repo last,
 // because an agent sent there reads all of it.
 //
+// A handoff with no `repo` keeps its source off GitHub: the pack is the only
+// copy. Then a file row copies its path, which is where it sits under the
+// pack's `source/`, and there is no repo row.
+//
 // One panel rather than submenus, so it works the same on a phone. Downloads
 // exist only on the built site, where the pack was written; on the dev server
 // they say so instead of linking to nothing.
@@ -27,22 +31,33 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** A file: the row opens it on GitHub, the button beside it copies its path. */
+/** A file: the row opens it on GitHub, the button beside it copies its path.
+ *  With no repo to open it in, the whole row copies the path. */
 function FileRow({ path }: { path: string }) {
   const [copied, setCopied] = useState(false);
+  const href = onGitHub(path);
+  async function copy() {
+    if (await copyText(path)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    }
+  }
+  if (!href) {
+    return (
+      <button type="button" onClick={copy} aria-label={`Copy ${path}`} className={`${row} group font-mono text-[11px]`}>
+        <span className="flex-1 truncate">{path}</span>
+        <span className="shrink-0 font-sans text-[10px] text-ui-dim">{copied ? "Copied" : "Copy"}</span>
+      </button>
+    );
+  }
   return (
     <div className="group flex items-center">
-      <a href={onGitHub(path)} target="_blank" rel="noreferrer" className={`${row} font-mono text-[11px]`} title={`Open ${path} on GitHub`}>
+      <a href={href} target="_blank" rel="noreferrer" className={`${row} font-mono text-[11px]`} title={`Open ${path} on GitHub`}>
         <span className="truncate">{path}</span>
       </a>
       <button
         type="button"
-        onClick={async () => {
-          if (await copyText(path)) {
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1200);
-          }
-        }}
+        onClick={copy}
         title="Copy the path"
         aria-label={`Copy ${path}`}
         className="shrink-0 cursor-pointer rounded-md px-1.5 py-1 text-[10px] text-ui-dim opacity-0 transition-opacity group-hover:opacity-100 hover:text-ui-text focus-visible:opacity-100"
@@ -144,12 +159,14 @@ export function CodeMenu({ screen }: {
             </Group>
           ) : null}
 
-          <Group title="Repo">
-            <a href={repoHome()} target="_blank" rel="noreferrer" className={row}>
-              <span className="flex-1">Whole repo on GitHub</span>
-              <span className="font-mono text-[11px] text-ui-dim">{short}</span>
-            </a>
-          </Group>
+          {repoHome() ? (
+            <Group title="Repo">
+              <a href={repoHome()} target="_blank" rel="noreferrer" className={row}>
+                <span className="flex-1">Whole repo on GitHub</span>
+                <span className="font-mono text-[11px] text-ui-dim">{short}</span>
+              </a>
+            </Group>
+          ) : null}
         </div>
       ) : null}
     </div>

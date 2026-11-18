@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 18 Nov 2026 — the repo is optional
+
+EDLock's source is a client's and never goes on GitHub, but its developers still get the
+code — in the pack. So `repo` can be left out of `handoff.config.ts`. Then the Code menu's
+file rows copy their path (where the file sits under the pack's `source/`) instead of
+opening GitHub, the "Whole repo" row is gone, and AGENTS.md names the commit alone.
+Everything else — the pack, the prompts, the downloads — never needed GitHub.
+
 ## 18 Nov 2026 — the handoff variation, driven by one config file
 
 A handoff bar is a review bar with its two ends swapped: a fixed name with a Handoff mark

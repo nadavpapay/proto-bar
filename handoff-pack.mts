@@ -310,7 +310,7 @@ function agentsFile() {
     "",
     "The design as it ships, with every decision closed.",
     "",
-    `- Built from commit \`${short}\` of ${config.repo}, the same one as the live prototype.`,
+    `- Built from commit \`${short}\`${config.repo ? ` of ${config.repo}` : ""}, the same one as the live prototype.`,
     `- Live prototype: ${address}`,
     "",
     "## How to work from this folder",

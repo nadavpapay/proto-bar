@@ -178,7 +178,8 @@ built the last version: change only that, don't rebuild the screen.
 2. **Install** the build-time pieces: `npm i -D marked puppeteer-core`. Nothing ships to the
    page.
 3. **Write `handoff.config.ts`** at the root (the demo's is the template): name, slug,
-   version, the deployed `address`, the GitHub `repo`, and for every screen its `files`, the
+   version, the deployed `address`, the GitHub `repo` (leave it out to keep the source off
+   GitHub — the pack carries it and the Code menu's files copy their path), and for every screen its `files`, the
    `notes` sections it carries and its `states`, each a query string that opens it. The
    prototype has to open any state from its address — `useUrlState` does that.
 4. **Write the notes and changes** — `handoff/NOTES.md` (one `## Title {#id}` section per
