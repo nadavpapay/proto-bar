@@ -75,6 +75,7 @@ export function handoff(config: HandoffConfig, options: { root?: string } = {}):
       repo: config.repo,
       sha: commit(root),
       folder: config.folder ?? ".handoff",
+      private: !!config.private,
       built,
       product: !!config.product,
       shared: config.shared ?? [],

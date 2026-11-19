@@ -183,7 +183,11 @@ function serve(): Promise<{ origin: string; close: () => void }> {
     const inside = path.startsWith(base) ? path.slice(base.length) : "";
     let file = join(dist, inside);
     if (file.startsWith(dist) && existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-    const hit = inside && file.startsWith(dist) && isFile(file) ? file : join(out, "index.html");
+    // An address that is no file gets its page, as the host does: the handoff's
+    // own under its path, the app's everywhere else (a frame the page loads).
+    const app = join(dist, "index.html");
+    const fallback = inside.startsWith(page.slice(base.length)) || !isFile(app) ? join(out, "index.html") : app;
+    const hit = inside && file.startsWith(dist) && isFile(file) ? file : fallback;
     res.setHeader("Content-Type", TYPES[extname(hit)] ?? "application/octet-stream");
     res.end(readFileSync(hit));
   });
@@ -260,14 +264,28 @@ async function drawStates(home: string) {
     executablePath: findChrome(),
     headless: true,
     pipe: true,
-    args: ["--hide-scrollbars", "--force-color-profile=srgb"],
+    // As root (a Docker build), Chrome runs only without its sandbox, and the
+    // container's small /dev/shm would crash it.
+    args: [
+      "--hide-scrollbars",
+      "--force-color-profile=srgb",
+      // Four tabs draw at once, and only one is in front: the others must still
+      // run their animations, or a picture catches a pop-up half faded in.
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+      ...(process.getuid?.() === 0 ? ["--no-sandbox", "--disable-dev-shm-usage"] : []),
+    ],
     defaultViewport: { width, height },
   });
   try {
     const todo = [...states];
     let done = 0;
     const worker = async () => {
-      const tab = await browser.newPage();
+      // A window of its own per drawer: tabs in one window are hidden behind
+      // the front one, and a hidden page runs no animations.
+      const window = await browser.createBrowserContext();
+      const tab = await window.newPage();
       for (let s = todo.shift(); s; s = todo.shift()) {
         const state = s;
         const stuck = setTimeout(() => fail(`${state.query} did not draw in ${LIMIT / 1000}s`), LIMIT);
@@ -286,11 +304,14 @@ async function drawStates(home: string) {
           type: "jpeg",
           quality: 72,
           clip: { x: 0, y: top, width, height: height - top },
+          // The clip is inside the window. Capturing beyond it re-lays the page
+          // out and draws an iframe in it blank.
+          captureBeyondViewport: false,
         });
         clearTimeout(stuck);
         process.stdout.write(`\r  ${++done} of ${states.length} drawn`);
       }
-      await tab.close();
+      await window.close();
     };
     await Promise.all(Array.from({ length: Math.min(DRAWERS, states.length) }, worker));
     if (done) process.stdout.write("\n");
@@ -393,18 +414,18 @@ function briefFile(key: string, inPack: Set<string>) {
 }
 
 function llms() {
+  // Behind a password, an agent cannot fetch the pack: the developer downloads it.
+  const get = config.private
+    ? [`The handoff is behind a password, so do not fetch the pack yourself. Ask the developer to download Code › The whole pack on the handoff and unzip it into \`${top}/\` at the root of the repo you are working in.`]
+    : ["Get the pack, from the root of the repo you are working in:", "", "```bash", getPack, "```"];
   return [
     `# ${title}`,
     "",
     `> A handoff to engineering: the design as it ships. This page needs JavaScript to draw, so an agent cannot read it. Everything an agent needs is in the pack below, built from commit ${short}.`,
     "",
-    "Get the pack, from the root of the repo you are working in:",
+    ...get,
     "",
-    "```bash",
-    getPack,
-    "```",
-    "",
-    `Then read \`${folder}/AGENTS.md\`${config.product ? `, \`${folder}/PRODUCT.md\` before your first screen` : ""}, and the brief for your screen under \`${folder}/screens/\`. Do not read \`source/\` as a whole. The folder keeps itself out of git. If you cannot reach the network, ask the developer to use Code › The whole pack on the handoff.`,
+    `Then read \`${folder}/AGENTS.md\`${config.product ? `, \`${folder}/PRODUCT.md\` before your first screen` : ""}, and the brief for your screen under \`${folder}/screens/\`. Do not read \`source/\` as a whole. The folder keeps itself out of git.${config.private ? "" : " If you cannot reach the network, ask the developer to use Code › The whole pack on the handoff."}`,
     "",
     "## Pack",
     "",

@@ -25,11 +25,18 @@ export const repoHome = () => (handoff.repo ? `https://github.com/${handoff.repo
 /** A state's address on whatever host the page is open on. */
 export const pageHref = (query = "") => `${handoff.page}${query}`;
 
-const getThePack = [
-  `1. If ${folder}/VERSION does not mention ${short}, get the pack from the root of this repo:`,
-  `   mkdir -p ${handoff.folder} && curl -fsSL ${handoff.address}pack.zip -o ${handoff.folder}/pack.zip && unzip -oq ${handoff.folder}/pack.zip -d ${handoff.folder}`,
-  `   If you cannot reach the network, stop and ask me to use Code › The whole pack on the handoff and unzip it into ${handoff.folder}/.`,
-];
+// A handoff behind a password (`private`) has a pack an agent cannot fetch, so
+// the developer downloads it once by hand.
+const getThePack = handoff.private
+  ? [
+      `1. If ${folder}/VERSION does not mention ${short}, stop and ask me to get the pack: on the handoff page (${handoff.address}), Code › The whole pack, unzipped into ${handoff.folder}/ at the root of this repo.`,
+      "   The page is behind a password, so do not try to download it yourself.",
+    ]
+  : [
+      `1. If ${folder}/VERSION does not mention ${short}, get the pack from the root of this repo:`,
+      `   mkdir -p ${handoff.folder} && curl -fsSL ${handoff.address}pack.zip -o ${handoff.folder}/pack.zip && unzip -oq ${handoff.folder}/pack.zip -d ${handoff.folder}`,
+      `   If you cannot reach the network, stop and ask me to use Code › The whole pack on the handoff and unzip it into ${handoff.folder}/.`,
+    ];
 
 /** For the screen on the page, or for the handoff as a whole. */
 export function promptForScreen(key?: string) {

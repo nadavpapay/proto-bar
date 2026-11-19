@@ -179,7 +179,9 @@ built the last version: change only that, don't rebuild the screen.
    page.
 3. **Write `handoff.config.ts`** at the root (the demo's is the template): name, slug,
    version, the deployed `address`, the GitHub `repo` (leave it out to keep the source off
-   GitHub — the pack carries it and the Code menu's files copy their path), and for every screen its `files`, the
+   GitHub — the pack carries it and the Code menu's files copy their path), `private: true` when the page
+   sits behind a password (an agent can't fetch the pack, so Copy for your agent tells the developer to
+   download Code › The whole pack instead of `curl`), and for every screen its `files`, the
    `notes` sections it carries and its `states`, each a query string that opens it. The
    prototype has to open any state from its address — `useUrlState` does that.
 4. **Write the notes and changes** — `handoff/NOTES.md` (one `## Title {#id}` section per

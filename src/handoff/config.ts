@@ -48,6 +48,9 @@ export interface HandoffConfig {
   repo?: string;
   /** Where the pack unpacks in the developer's repo. Default `.handoff`. */
   folder?: string;
+  /** The page sits behind a password, so an agent cannot fetch the pack: the
+   *  prompts send the developer to Code › The whole pack instead of `curl`. */
+  private?: boolean;
   /** The implementation notes: markdown, one `## Title {#id}` section per rule. */
   notes: string;
   /** What changed since it was handed over (see the comment in the demo's file). */
@@ -117,6 +120,8 @@ export interface HandoffData {
   /** The commit the page was built from, or `main` outside git. */
   sha: string;
   folder: string;
+  /** Behind a password: the pack is downloaded by hand, never fetched. */
+  private: boolean;
   /** False on the dev server, where the pack has not been written. */
   built: boolean;
   product: boolean;
